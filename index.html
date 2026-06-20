@@ -1,0 +1,1265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#ff2d8f" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="OOX" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" href="icon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="icon-180.png" />
+  <title>OOX — Exercise Tracker</title>
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+    }
+  </script>
+  <style>
+    :root {
+      --bg: #fff5fb;          /* bright cheerful background */
+      --surface: #ffffff;
+      --surface-2: #fdeaf4;   /* soft pink tint */
+      --border: #ffd3e8;      /* light pink border */
+      --text: #3a2444;        /* deep plum, readable */
+      --text-dim: #a07d97;    /* muted mauve */
+      --primary: #ff2d8f;     /* hot happy pink */
+      --primary-dim: #e60e76;
+      --cardio: #10ccd1;      /* turquoise */
+      --strength: #ff8a1f;    /* bright orange */
+      --lime: #84cc16;        /* lime green */
+      --danger: #ff3b5c;      /* bright coral */
+      --safe-top: env(safe-area-inset-top, 0px);
+      --safe-bottom: env(safe-area-inset-bottom, 0px);
+    }
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html, body { margin: 0; padding: 0; height: 100%; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: ui-monospace, "SF Mono", "JetBrains Mono", "Fira Code", "Cascadia Code", Menlo, Monaco, Consolas, "Courier New", monospace;
+      font-size: 16px;
+      -webkit-font-smoothing: antialiased;
+      overscroll-behavior-y: none;
+    }
+    #app { min-height: 100%; }
+
+    /* Layout */
+    .page {
+      padding: calc(var(--safe-top) + 16px) 16px calc(var(--safe-bottom) + 90px);
+      max-width: 680px;
+      margin: 0 auto;
+    }
+    .page-title { font-size: 28px; font-weight: 800; margin: 4px 0 18px; letter-spacing: -0.5px; color: var(--primary); }
+    .section-title { font-size: 13px; text-transform: uppercase; letter-spacing: 0.6px; color: var(--text-dim); margin: 24px 4px 10px; font-weight: 700; }
+
+    /* Bottom nav */
+    .nav {
+      position: fixed; bottom: 0; left: 0; right: 0;
+      display: flex; justify-content: space-around;
+      background: rgba(255,255,255,0.88);
+      backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
+      border-top: 1px solid var(--border);
+      padding: 8px 0 calc(var(--safe-bottom) + 8px);
+      z-index: 50;
+    }
+    .nav button {
+      background: none; border: none; color: var(--text-dim);
+      display: flex; flex-direction: column; align-items: center; gap: 3px;
+      font-size: 11px; font-weight: 600; padding: 4px 18px; cursor: pointer;
+      transition: color .15s;
+    }
+    .nav button.active { color: var(--primary); }
+    .nav .ico { font-size: 22px; line-height: 1; }
+
+    /* Cards */
+    .card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 0; padding: 16px; margin-bottom: 12px;
+    }
+    .card.tappable { cursor: pointer; transition: background .12s; }
+    .card.tappable:active { background: var(--surface-2); }
+
+    /* Buttons */
+    button { font-family: inherit; }
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+      background: var(--primary); color: white; border: none; border-radius: 0;
+      padding: 13px 18px; font-size: 16px; font-weight: 700; cursor: pointer; width: 100%;
+      transition: transform .08s, background .12s;
+    }
+    .btn:active { transform: scale(.98); }
+    .btn:disabled { opacity: .4; cursor: not-allowed; }
+    .btn.secondary { background: var(--surface-2); color: var(--text); border: 1px solid var(--border); }
+    .btn.danger { background: var(--danger); }
+    .btn.ghost { background: none; color: var(--primary); border: none; width: auto; padding: 8px; }
+    .btn-row { display: flex; gap: 10px; }
+
+    /* Inputs */
+    label.field { display: block; margin-bottom: 14px; }
+    label.field .lbl { display: block; font-size: 13px; font-weight: 700; color: var(--text-dim); margin-bottom: 6px; }
+    input[type=text], input[type=number], input[type=date], textarea {
+      width: 100%; background: var(--surface-2); border: 1px solid var(--border);
+      border-radius: 0; padding: 12px 14px; color: var(--text); font-size: 16px;
+      font-family: inherit; outline: none;
+    }
+    input:focus, textarea:focus { border-color: var(--primary); }
+    textarea { resize: vertical; min-height: 70px; }
+    .req { color: var(--danger); }
+
+    /* Chips */
+    .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+    .chip {
+      display: inline-flex; align-items: center; gap: 6px;
+      background: var(--surface-2); border: 1px solid var(--border); color: var(--text);
+      border-radius: 0; padding: 8px 14px; font-size: 14px; font-weight: 600; cursor: pointer;
+      transition: all .12s;
+    }
+    .chip.on { background: var(--primary); border-color: var(--primary); color: white; }
+    .chip.cardio.on { background: var(--cardio); border-color: var(--cardio); color: #062b30; }
+    .chip.strength.on { background: var(--strength); border-color: var(--strength); color: #3a2602; }
+    .chip .x { font-size: 16px; opacity: .8; }
+    .chip.add { border-style: dashed; color: var(--text-dim); }
+
+    /* Ordered list (routine builder) */
+    .order-row { display: flex; align-items: center; gap: 8px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 0; padding: 8px 10px; margin-bottom: 8px; }
+    .order-num { width: 24px; height: 24px; flex: none; border-radius: 0; background: var(--primary); color: #fff; font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
+    .order-name { flex: 1; font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .order-btn { width: 36px; height: 36px; flex: none; border-radius: 0; border: 1px solid var(--border); background: var(--surface); color: var(--text); font-size: 17px; cursor: pointer; }
+    .order-btn:disabled { opacity: .3; cursor: default; }
+    .order-btn.danger { color: var(--danger); }
+
+    .tag {
+      display: inline-block; font-size: 12px; font-weight: 700; padding: 3px 9px;
+      border-radius: 0; margin-right: 6px;
+    }
+    .tag.cardio { background: rgba(16,204,209,.18); color: #0a7e82; }
+    .tag.strength { background: rgba(255,138,31,.2); color: #c25e00; }
+    .tag.cat { background: var(--surface-2); color: #8a5c79; }
+    .tag.metric { background: rgba(132,204,22,.22); color: #4d7c0f; }
+
+    /* Modal */
+    .overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,.55);
+      display: flex; align-items: flex-end; justify-content: center; z-index: 100;
+      backdrop-filter: blur(4px);
+    }
+    .sheet {
+      background: var(--surface); width: 100%; max-width: 680px;
+      border-radius: 0; border-top: 1px solid var(--border);
+      padding: 8px 16px calc(var(--safe-bottom) + 20px);
+      max-height: 88vh; overflow-y: auto; animation: slideup .22s ease;
+    }
+    @keyframes slideup { from { transform: translateY(100%);} to { transform: translateY(0);} }
+    .sheet-grip { width: 40px; height: 5px; background: var(--border); border-radius: 0; margin: 8px auto 14px; }
+    .sheet h2 { margin: 0 0 16px; font-size: 22px; font-weight: 800; }
+
+    .row-between { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+    .muted { color: var(--text-dim); }
+    .empty { text-align: center; color: var(--text-dim); padding: 40px 20px; }
+    .empty .big { font-size: 40px; margin-bottom: 8px; }
+
+    /* Calendar */
+    .cal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+    .cal-head .mtitle { font-size: 18px; font-weight: 800; }
+    .cal-nav { background: var(--surface-2); border: 1px solid var(--border); color: var(--text); width: 38px; height: 38px; border-radius: 0; font-size: 18px; cursor: pointer; }
+    .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+    .cal-dow { text-align: center; font-size: 11px; font-weight: 700; color: var(--text-dim); padding: 4px 0; }
+    .cal-cell {
+      aspect-ratio: 1; border-radius: 0; border: 1px solid transparent;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      cursor: pointer; font-size: 15px; font-weight: 600; position: relative; color: var(--text);
+      background: var(--surface);
+    }
+    .cal-cell.other { color: var(--text-dim); opacity: .35; }
+    .cal-cell.today { border-color: var(--primary); }
+    .cal-cell.selected { box-shadow: inset 0 0 0 2px var(--primary); font-weight: 800; }
+    .cal-cell .num { position: relative; z-index: 1; }
+    .cal-shade { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 0; }
+
+    .val-input-row { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+    .val-input-row .mname { flex: 1; font-weight: 600; }
+    .val-input-row input { width: 120px; }
+
+    .log-item { display: flex; align-items: center; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid var(--border); }
+    .log-item:last-child { border-bottom: none; }
+    .log-vals { color: var(--text-dim); font-size: 14px; margin-top: 2px; }
+    .log-note { color: var(--text); font-size: 14px; margin-top: 4px; font-style: italic; white-space: pre-wrap; opacity: .85; }
+
+    select {
+      width: 100%; background: var(--surface-2); border: 1px solid var(--border);
+      border-radius: 0; padding: 12px 14px; color: var(--text); font-size: 16px; font-family: inherit;
+    }
+    .center { text-align: center; }
+    a.linklike { color: var(--primary); cursor: pointer; }
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+
+  <script type="module">
+    import { h, render, Fragment } from 'https://esm.sh/preact@10.23.1';
+    import { useState, useEffect, useMemo, useRef } from 'https://esm.sh/preact@10.23.1/hooks';
+    import htm from 'https://esm.sh/htm@3.1.1';
+    const html = htm.bind(h);
+
+    /* ----------------------------- Store ----------------------------- */
+    const STORE_KEY = 'oox-data-v1';
+    const emptyData = () => ({ metrics: [], categories: [], exercises: [], routines: [], logEntries: [] });
+    function loadData() {
+      try {
+        const raw = localStorage.getItem(STORE_KEY);
+        if (!raw) return emptyData();
+        return { ...emptyData(), ...JSON.parse(raw) };
+      } catch { return emptyData(); }
+    }
+    let data = loadData();
+    const listeners = new Set();
+    function save() {
+      localStorage.setItem(STORE_KEY, JSON.stringify(data));
+      listeners.forEach(l => l());
+    }
+    function useData() {
+      const [, force] = useState(0);
+      useEffect(() => {
+        const l = () => force(x => x + 1);
+        listeners.add(l);
+        return () => listeners.delete(l);
+      }, []);
+      return data;
+    }
+    const uid = () => (crypto.randomUUID ? crypto.randomUUID() : 'id' + Date.now() + Math.random().toString(16).slice(2));
+    const now = () => Date.now();
+
+    /* --------------------------- Mutations --------------------------- */
+    function upsertMetricByName(name) {
+      const n = name.trim();
+      if (!n) return null;
+      const found = data.metrics.find(m => m.name.toLowerCase() === n.toLowerCase());
+      if (found) return found.id;
+      const m = { id: uid(), name: n, createdAt: now() };
+      data.metrics.push(m);
+      return m.id;
+    }
+    function upsertCategoryByName(name) {
+      const n = name.trim();
+      if (!n) return null;
+      const found = data.categories.find(c => c.name.toLowerCase() === n.toLowerCase());
+      if (found) return found.id;
+      const c = { id: uid(), name: n, createdAt: now() };
+      data.categories.push(c);
+      return c.id;
+    }
+    function saveExercise(ex) {
+      const idx = data.exercises.findIndex(e => e.id === ex.id);
+      if (idx >= 0) data.exercises[idx] = ex;
+      else data.exercises.push(ex);
+      save();
+    }
+    function deleteExercise(id) {
+      data.exercises = data.exercises.filter(e => e.id !== id);
+      data.logEntries = data.logEntries.filter(l => l.exerciseId !== id);
+      data.routines.forEach(r => r.exerciseIds = r.exerciseIds.filter(eid => eid !== id));
+      save();
+    }
+    function saveRoutine(r) {
+      const idx = data.routines.findIndex(x => x.id === r.id);
+      if (idx >= 0) data.routines[idx] = r;
+      else data.routines.push(r);
+      save();
+    }
+    function deleteRoutine(id) {
+      data.routines = data.routines.filter(r => r.id !== id);
+      save();
+    }
+    function addLogEntry(entry) { data.logEntries.push(entry); save(); }
+    function updateLogEntry(entry) {
+      const idx = data.logEntries.findIndex(l => l.id === entry.id);
+      if (idx >= 0) data.logEntries[idx] = entry;
+      save();
+    }
+    function deleteLogEntry(id) {
+      data.logEntries = data.logEntries.filter(l => l.id !== id);
+      save();
+    }
+    function renameMetric(id, name) {
+      const m = data.metrics.find(x => x.id === id); if (m) m.name = name.trim(); save();
+    }
+    function deleteMetric(id) {
+      const inUse = data.exercises.some(e => (e.metricIds || []).includes(id));
+      if (inUse) { alert('This metric is used by an exercise. Remove it there first.'); return; }
+      data.metrics = data.metrics.filter(m => m.id !== id); save();
+    }
+    function renameCategory(id, name) {
+      const c = data.categories.find(x => x.id === id); if (c) c.name = name.trim(); save();
+    }
+    function deleteCategory(id) {
+      data.exercises.forEach(e => { if (e.categoryId === id) e.categoryId = null; });
+      data.categories = data.categories.filter(c => c.id !== id); save();
+    }
+    function setCategoryColor(id, color) {
+      const c = data.categories.find(x => x.id === id); if (c) c.color = color; save();
+    }
+
+    /* --------------------------- Helpers ----------------------------- */
+    const metricName = id => (data.metrics.find(m => m.id === id) || {}).name || '?';
+    const categoryName = id => (data.categories.find(c => c.id === id) || {}).name || '';
+    const exerciseById = id => data.exercises.find(e => e.id === id);
+    const UNCATEGORIZED_COLOR = '#b9a3b3';
+    const categoryColor = id => {
+      const idx = data.categories.findIndex(c => c.id === id);
+      if (idx < 0) return UNCATEGORIZED_COLOR;
+      return data.categories[idx].color || PALETTE[idx % PALETTE.length];
+    };
+    // blend a #rrggbb hex toward white by amt (0..1)
+    const lighten = (hex, amt) => {
+      const n = parseInt(hex.slice(1), 16);
+      const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+      const mix = c => Math.round(c + (255 - c) * amt);
+      return `rgb(${mix(r)},${mix(g)},${mix(b)})`;
+    };
+
+    const pad = n => String(n).padStart(2, '0');
+    const toKey = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    const todayKey = () => toKey(new Date());
+    const parseKey = k => { const [y, m, d] = k.split('-').map(Number); return new Date(y, m - 1, d); };
+    const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+    const DOW = ['S','M','T','W','T','F','S'];
+    const prettyDate = k => {
+      const d = parseKey(k);
+      return d.toLocaleDateString(undefined, { weekday: 'short', month: 'long', day: 'numeric', year: 'numeric' });
+    };
+
+    /* ------------------------ Reusable: TokenPicker ------------------- */
+    // Multi (metrics) or single (category) "choose existing or type new" control.
+    function TokenPicker({ options, selectedIds, onChange, multi, placeholder }) {
+      const [text, setText] = useState('');
+      const selected = selectedIds || [];
+      const toggle = id => {
+        if (multi) {
+          onChange(selected.includes(id) ? selected.filter(x => x !== id) : [...selected, id]);
+        } else {
+          onChange(selected.includes(id) ? [] : [id]);
+        }
+      };
+      const add = () => {
+        const n = text.trim();
+        if (!n) return;
+        const existing = options.find(o => o.name.toLowerCase() === n.toLowerCase());
+        let id;
+        if (existing) id = existing.id;
+        else { id = uid(); options.push({ id, name: n, createdAt: now() }); }
+        if (!selected.includes(id)) onChange(multi ? [...selected, id] : [id]);
+        else if (!multi) onChange([id]);
+        setText('');
+      };
+      const unselected = options.filter(o => !selected.includes(o.id));
+      return html`
+        <div>
+          <div class="chips" style="margin-bottom:8px">
+            ${selected.map(id => {
+              const o = options.find(x => x.id === id);
+              if (!o) return null;
+              return html`<span class="chip on" onClick=${() => toggle(id)}>${o.name}<span class="x">×</span></span>`;
+            })}
+            ${selected.length === 0 && html`<span class="muted" style="font-size:14px">None selected</span>`}
+          </div>
+          ${unselected.length > 0 && html`
+            <div class="chips" style="margin-bottom:8px">
+              ${unselected.map(o => html`<span class="chip" onClick=${() => toggle(o.id)}>+ ${o.name}</span>`)}
+            </div>`}
+          <div style="display:flex; gap:8px">
+            <input type="text" placeholder=${placeholder} value=${text}
+              onInput=${e => setText(e.target.value)}
+              onKeyDown=${e => { if (e.key === 'Enter') { e.preventDefault(); add(); } }} />
+            <button class="btn secondary" style="width:auto; padding:0 18px" onClick=${add}>Add</button>
+          </div>
+        </div>`;
+    }
+
+    /* ---------------------------- Modal ------------------------------- */
+    function Sheet({ title, onClose, children }) {
+      return html`
+        <div class="overlay" onClick=${onClose}>
+          <div class="sheet" onClick=${e => e.stopPropagation()}>
+            <div class="sheet-grip"></div>
+            ${title && html`<h2>${title}</h2>`}
+            ${children}
+          </div>
+        </div>`;
+    }
+
+    /* ========================== DEFINE PAGE =========================== */
+    function ExerciseForm({ initial, onDone }) {
+      const [name, setName] = useState(initial?.name || '');
+      const [types, setTypes] = useState(initial?.types || []);
+      const [metricIds, setMetricIds] = useState(initial?.metricIds || []);
+      const [catIds, setCatIds] = useState(initial?.categoryId ? [initial.categoryId] : []);
+      const [info, setInfo] = useState(initial?.info || '');
+
+      const toggleType = t => setTypes(types.includes(t) ? types.filter(x => x !== t) : [...types, t]);
+
+      const submit = () => {
+        if (!name.trim()) return;
+        saveExercise({
+          id: initial?.id || uid(),
+          name: name.trim(),
+          types,
+          metricIds,
+          categoryId: catIds[0] || null,
+          info: info.trim(),
+          createdAt: initial?.createdAt || now(),
+        });
+        onDone();
+      };
+
+      return html`
+        <div>
+          <label class="field">
+            <span class="lbl">Name <span class="req">*</span></span>
+            <input type="text" value=${name} placeholder="e.g. Elliptical" onInput=${e => setName(e.target.value)} />
+          </label>
+
+          <label class="field">
+            <span class="lbl">Type</span>
+            <div class="chips">
+              <span class=${'chip cardio ' + (types.includes('cardio') ? 'on' : '')} onClick=${() => toggleType('cardio')}>Cardio</span>
+              <span class=${'chip strength ' + (types.includes('strength') ? 'on' : '')} onClick=${() => toggleType('strength')}>Strength</span>
+            </div>
+          </label>
+
+          <label class="field">
+            <span class="lbl">Metrics</span>
+            <${TokenPicker} options=${data.metrics} selectedIds=${metricIds} onChange=${setMetricIds} multi=${true} placeholder="e.g. meters" />
+          </label>
+
+          <label class="field">
+            <span class="lbl">Category</span>
+            <${TokenPicker} options=${data.categories} selectedIds=${catIds} onChange=${setCatIds} multi=${false} placeholder="e.g. Gym" />
+          </label>
+
+          <label class="field">
+            <span class="lbl">Info</span>
+            <textarea value=${info} placeholder="Optional notes" onInput=${e => setInfo(e.target.value)}></textarea>
+          </label>
+
+          <button class="btn" disabled=${!name.trim()} onClick=${submit}>${initial ? 'Save changes' : 'Save exercise'}</button>
+        </div>`;
+    }
+
+    function RoutineForm({ initial, onDone }) {
+      const [name, setName] = useState(initial?.name || '');
+      const [exerciseIds, setExerciseIds] = useState(initial?.exerciseIds || []);
+      const add = id => { if (!exerciseIds.includes(id)) setExerciseIds([...exerciseIds, id]); };
+      const remove = id => setExerciseIds(exerciseIds.filter(x => x !== id));
+      const move = (i, delta) => {
+        const j = i + delta;
+        if (j < 0 || j >= exerciseIds.length) return;
+        const next = exerciseIds.slice();
+        [next[i], next[j]] = [next[j], next[i]];
+        setExerciseIds(next);
+      };
+      const submit = () => {
+        if (!name.trim()) return;
+        saveRoutine({ id: initial?.id || uid(), name: name.trim(), exerciseIds, createdAt: initial?.createdAt || now() });
+        onDone();
+      };
+      const available = data.exercises.filter(e => !exerciseIds.includes(e.id));
+      return html`
+        <div>
+          <label class="field">
+            <span class="lbl">Routine name <span class="req">*</span></span>
+            <input type="text" value=${name} placeholder="e.g. Full body workout" onInput=${e => setName(e.target.value)} />
+          </label>
+
+          <label class="field">
+            <span class="lbl">Exercises in order</span>
+            ${exerciseIds.length === 0
+              ? html`<div class="muted" style="font-size:14px">None added yet${data.exercises.length === 0 ? ' — define some exercises first.' : ' — pick from below.'}</div>`
+              : exerciseIds.map((id, i) => {
+                  const ex = exerciseById(id);
+                  if (!ex) return null;
+                  return html`<div class="order-row" key=${id}>
+                    <span class="order-num">${i + 1}</span>
+                    <span class="order-name">${ex.name}</span>
+                    <button class="order-btn" disabled=${i === 0} onClick=${() => move(i, -1)}>↑</button>
+                    <button class="order-btn" disabled=${i === exerciseIds.length - 1} onClick=${() => move(i, 1)}>↓</button>
+                    <button class="order-btn danger" onClick=${() => remove(id)}>×</button>
+                  </div>`;
+                })}
+          </label>
+
+          ${available.length > 0 && html`<label class="field">
+            <span class="lbl">Add exercises</span>
+            <div class="chips">
+              ${available.map(e => html`<span class="chip add" key=${e.id} onClick=${() => add(e.id)}>+ ${e.name}</span>`)}
+            </div>
+          </label>`}
+
+          <button class="btn" disabled=${!name.trim() || exerciseIds.length === 0} onClick=${submit}>${initial ? 'Save changes' : 'Create routine'}</button>
+        </div>`;
+    }
+
+    function ManagerSheet({ onClose }) {
+      useData();
+      const editName = (current, fn) => { const v = prompt('Rename', current); if (v && v.trim()) fn(v.trim()); };
+      return html`
+        <${Sheet} title="Metrics & Categories" onClose=${onClose}>
+          <div class="section-title" style="margin-top:0">Metrics</div>
+          ${data.metrics.length === 0 ? html`<div class="muted" style="font-size:14px;padding:4px">None yet.</div>`
+            : data.metrics.map(m => html`
+              <div class="row-between" style="padding:8px 0; border-bottom:1px solid var(--border)">
+                <span>${m.name}</span>
+                <span>
+                  <button class="btn ghost" onClick=${() => editName(m.name, v => renameMetric(m.id, v))}>Rename</button>
+                  <button class="btn ghost" style="color:var(--danger)" onClick=${() => deleteMetric(m.id)}>Delete</button>
+                </span>
+              </div>`)}
+          <div class="section-title">Categories</div>
+          ${data.categories.length === 0 ? html`<div class="muted" style="font-size:14px;padding:4px">None yet.</div>`
+            : data.categories.map((c, ci) => {
+              const eff = c.color || PALETTE[ci % PALETTE.length];
+              return html`<div style="padding:8px 0; border-bottom:1px solid var(--border)" key=${c.id}>
+                <div class="row-between">
+                  <span>${c.name}</span>
+                  <span>
+                    <button class="btn ghost" onClick=${() => editName(c.name, v => renameCategory(c.id, v))}>Rename</button>
+                    <button class="btn ghost" style="color:var(--danger)" onClick=${() => deleteCategory(c.id)}>Delete</button>
+                  </span>
+                </div>
+                <div style="display:flex; gap:8px; margin-top:8px; align-items:center; flex-wrap:wrap">
+                  <span class="muted" style="font-size:12px">Color:</span>
+                  ${PALETTE.map(col => html`<span key=${col} onClick=${() => setCategoryColor(c.id, col)}
+                    style=${`width:24px; height:24px; cursor:pointer; background:${col}; border:3px solid ${eff === col ? 'var(--text)' : 'transparent'}; box-shadow: inset 0 0 0 1px rgba(0,0,0,.15)`}></span>`)}
+                </div>
+              </div>`;
+            })}
+          <div style="height:16px"></div>
+          <button class="btn secondary" onClick=${onClose}>Done</button>
+        <//>`;
+    }
+
+    function DefinePage() {
+      const d = useData();
+      const [sheet, setSheet] = useState(null); // {kind:'exercise'|'routine', initial}
+      const [manager, setManager] = useState(false);
+
+      return html`
+        <div class="page">
+          <div class="page-title">Define</div>
+
+          <button class="btn" onClick=${() => setSheet({ kind: 'exercise' })}>+ Define new exercise</button>
+          <button class="btn secondary" style="margin-top:10px" onClick=${() => setSheet({ kind: 'routine' })}>+ Define new routine</button>
+          <button class="btn secondary" style="margin-top:10px" onClick=${() => setManager(true)}>Edit existing attributes</button>
+
+          <div class="section-title">My Exercises</div>
+          ${d.exercises.length === 0
+            ? html`<div class="empty"><div class="big">≡</div>No exercises yet.<br/>Define one to get started.</div>`
+            : d.exercises.map(e => html`
+              <div class="card tappable" key=${e.id} onClick=${() => setSheet({ kind: 'exercise', initial: e })}>
+                <div class="row-between">
+                  <strong style="font-size:17px">${e.name}</strong>
+                  <button class="btn ghost" style="color:var(--danger)" onClick=${ev => { ev.stopPropagation(); if (confirm('Delete "' + e.name + '" and its logs?')) deleteExercise(e.id); }}>Delete</button>
+                </div>
+                <div style="margin-top:8px">
+                  ${(e.types || []).map(t => html`<span class=${'tag ' + t}>${t}</span>`)}
+                  ${e.categoryId && html`<span class="tag cat">${categoryName(e.categoryId)}</span>`}
+                </div>
+                ${(e.metricIds || []).length > 0 && html`<div style="margin-top:8px">
+                  ${e.metricIds.map(id => html`<span class="tag metric">${metricName(id)}</span>`)}
+                </div>`}
+                ${e.info && html`<div class="muted" style="margin-top:8px; font-size:14px">${e.info}</div>`}
+              </div>`)}
+
+          ${d.routines.length > 0 && html`<div class="section-title">Routines</div>`}
+          ${d.routines.map(r => html`
+            <div class="card tappable" key=${r.id} onClick=${() => setSheet({ kind: 'routine', initial: r })}>
+              <div class="row-between">
+                <strong style="font-size:17px">${r.name}</strong>
+                <button class="btn ghost" style="color:var(--danger)" onClick=${ev => { ev.stopPropagation(); if (confirm('Delete routine "' + r.name + '"?')) deleteRoutine(r.id); }}>Delete</button>
+              </div>
+              <div class="muted" style="margin-top:6px; font-size:14px">
+                ${r.exerciseIds.map(id => (exerciseById(id) || {}).name).filter(Boolean).join(' · ')}
+              </div>
+            </div>`)}
+
+          ${sheet && html`
+            <${Sheet} title=${sheet.kind === 'exercise' ? (sheet.initial ? 'Edit exercise' : 'Define new exercise') : (sheet.initial ? 'Edit routine' : 'New routine')} onClose=${() => setSheet(null)}>
+              ${sheet.kind === 'exercise'
+                ? html`<${ExerciseForm} initial=${sheet.initial} onDone=${() => setSheet(null)} />`
+                : html`<${RoutineForm} initial=${sheet.initial} onDone=${() => setSheet(null)} />`}
+            <//>`}
+          ${manager && html`<${ManagerSheet} onClose=${() => setManager(false)} />`}
+
+          <${BackupBar} />
+        </div>`;
+    }
+
+    /* ========================== TODAY PAGE ============================ */
+    function ValueEntry({ exercise, values, setValues, note, setNote }) {
+      const mids = exercise.metricIds || [];
+      return html`<div>
+        ${mids.length === 0
+          ? html`<div class="muted" style="font-size:14px; padding:4px 0">No metrics — just logged.</div>`
+          : mids.map(mid => html`
+            <div class="val-input-row" key=${mid}>
+              <span class="mname">${metricName(mid)}</span>
+              <input type="number" inputmode="decimal" value=${values[mid] ?? ''} placeholder="0"
+                onInput=${e => setValues({ ...values, [mid]: e.target.value })} />
+            </div>`)}
+        ${setNote && html`<label class="field" style="margin:10px 0 0">
+          <span class="lbl">Note</span>
+          <textarea value=${note || ''} placeholder="e.g. felt good until last set, knees started hurting"
+            onInput=${e => setNote(e.target.value)}></textarea>
+        </label>`}
+      </div>`;
+    }
+
+    function AddLogSheet({ dateKey, onClose }) {
+      const [step, setStep] = useState('pick'); // pick | exercise | routine
+      const [exercise, setExercise] = useState(null);
+      const [values, setValues] = useState({});
+      const [note, setNote] = useState('');
+      const [routine, setRoutine] = useState(null);
+      const [routineExIds, setRoutineExIds] = useState([]); // working copy, may differ from routine.exerciseIds
+      const [routineValues, setRoutineValues] = useState({}); // exId -> {mid:val}
+      const [routineNotes, setRoutineNotes] = useState({}); // exId -> note string
+
+      const numify = obj => {
+        const out = {};
+        Object.keys(obj).forEach(k => { const n = parseFloat(obj[k]); if (!isNaN(n)) out[k] = n; });
+        return out;
+      };
+
+      const saveExerciseLog = () => {
+        addLogEntry({ id: uid(), date: dateKey, exerciseId: exercise.id, routineId: null, values: numify(values), note: note.trim(), createdAt: now() });
+        onClose();
+      };
+      const moveRx = (i, delta) => {
+        const j = i + delta;
+        if (j < 0 || j >= routineExIds.length) return;
+        const next = routineExIds.slice();
+        [next[i], next[j]] = [next[j], next[i]];
+        setRoutineExIds(next);
+      };
+      const removeRx = id => setRoutineExIds(routineExIds.filter(x => x !== id));
+      const addRx = id => { if (!routineExIds.includes(id)) setRoutineExIds([...routineExIds, id]); };
+
+      // Log today's entries against the given routineId (the working exercise list + values).
+      const logRoutine = routineId => {
+        routineExIds.forEach(exId => {
+          if (!exerciseById(exId)) return;
+          addLogEntry({ id: uid(), date: dateKey, exerciseId: exId, routineId, values: numify(routineValues[exId] || {}), note: (routineNotes[exId] || '').trim(), createdAt: now() });
+        });
+        onClose();
+      };
+      const saveJustToday = () => logRoutine(routine.id);
+      const saveEditRoutine = () => { saveRoutine({ ...routine, exerciseIds: routineExIds }); logRoutine(routine.id); };
+      const saveAsNew = () => {
+        const name = prompt('Name for the new routine', routine.name + ' (copy)');
+        if (!name || !name.trim()) return;
+        const id = uid();
+        saveRoutine({ id, name: name.trim(), exerciseIds: routineExIds, createdAt: now() });
+        logRoutine(id);
+      };
+
+      let body;
+      if (step === 'pick') {
+        body = html`<div>
+          <div class="section-title" style="margin-top:0">Add an exercise</div>
+          ${data.exercises.length === 0 ? html`<div class="muted" style="font-size:14px">No exercises defined yet.</div>`
+            : html`<div class="chips">
+                ${data.exercises.map(e => html`<span class="chip" onClick=${() => { setExercise(e); setStep('exercise'); }}>${e.name}</span>`)}
+              </div>`}
+          ${data.routines.length > 0 && html`<div class="section-title">Add a routine</div>
+            <div class="chips">
+              ${data.routines.map(r => html`<span class="chip" onClick=${() => { setRoutine(r); setRoutineExIds(r.exerciseIds.slice()); setStep('routine'); }}>${r.name}</span>`)}
+            </div>`}
+        </div>`;
+      } else if (step === 'exercise') {
+        body = html`<div>
+          <button class="btn ghost" onClick=${() => setStep('pick')}>← Back</button>
+          <h3 style="margin:8px 0 ${exercise.info ? '6px' : '14px'}">${exercise.name}</h3>
+          ${exercise.info && html`<div class="muted" style="font-size:14px; margin-bottom:14px; white-space:pre-wrap">${exercise.info}</div>`}
+          <${ValueEntry} exercise=${exercise} values=${values} setValues=${setValues} note=${note} setNote=${setNote} />
+          <button class="btn" style="margin-top:10px" onClick=${saveExerciseLog}>Save</button>
+        </div>`;
+      } else {
+        const modified = JSON.stringify(routineExIds) !== JSON.stringify(routine.exerciseIds);
+        const available = data.exercises.filter(e => !routineExIds.includes(e.id));
+        body = html`<div>
+          <button class="btn ghost" onClick=${() => setStep('pick')}>← Back</button>
+          <h3 style="margin:8px 0 14px">${routine.name}</h3>
+          ${routineExIds.map((exId, i) => {
+            const ex = exerciseById(exId);
+            if (!ex) return null;
+            return html`<div class="card" key=${exId}>
+              <div class="row-between">
+                <strong style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${ex.name}</strong>
+                <div style="display:flex;gap:6px;flex:none">
+                  <button class="order-btn" disabled=${i === 0} onClick=${() => moveRx(i, -1)}>↑</button>
+                  <button class="order-btn" disabled=${i === routineExIds.length - 1} onClick=${() => moveRx(i, 1)}>↓</button>
+                  <button class="order-btn danger" onClick=${() => removeRx(exId)}>×</button>
+                </div>
+              </div>
+              ${ex.info && html`<div class="muted" style="font-size:14px; margin-top:6px; white-space:pre-wrap">${ex.info}</div>`}
+              <div style="margin-top:8px">
+                <${ValueEntry} exercise=${ex} values=${routineValues[exId] || {}}
+                  setValues=${v => setRoutineValues({ ...routineValues, [exId]: v })}
+                  note=${routineNotes[exId] || ''} setNote=${v => setRoutineNotes({ ...routineNotes, [exId]: v })} />
+              </div>
+            </div>`;
+          })}
+          ${available.length > 0 && html`<label class="field">
+            <span class="lbl">Add exercises</span>
+            <div class="chips">
+              ${available.map(e => html`<span class="chip add" key=${e.id} onClick=${() => addRx(e.id)}>+ ${e.name}</span>`)}
+            </div>
+          </label>`}
+          ${modified
+            ? html`<div style="display:flex;flex-direction:column;gap:8px;margin-top:14px">
+                <button class="btn" onClick=${saveEditRoutine}>Save changes to “${routine.name}”</button>
+                <button class="btn secondary" onClick=${saveAsNew}>Save as new routine</button>
+                <button class="btn ghost" onClick=${saveJustToday}>Just log for today</button>
+              </div>`
+            : html`<button class="btn" style="margin-top:14px" onClick=${saveJustToday}>Save routine log</button>`}
+        </div>`;
+      }
+      return html`<${Sheet} title=${'Add for ' + prettyDate(dateKey)} onClose=${onClose}>${body}<//>`;
+    }
+
+    function EditLogSheet({ entry, onClose }) {
+      const ex = exerciseById(entry.exerciseId);
+      const [values, setValues] = useState({ ...entry.values });
+      const [note, setNote] = useState(entry.note || '');
+      if (!ex) return null;
+      const numify = obj => { const out = {}; Object.keys(obj).forEach(k => { const n = parseFloat(obj[k]); if (!isNaN(n)) out[k] = n; }); return out; };
+      const submit = () => { updateLogEntry({ ...entry, values: numify(values), note: note.trim() }); onClose(); };
+      return html`<${Sheet} title=${'Edit ' + ex.name} onClose=${onClose}>
+        <${ValueEntry} exercise=${ex} values=${values} setValues=${setValues} note=${note} setNote=${setNote} />
+        <div class="btn-row" style="margin-top:10px">
+          <button class="btn danger" onClick=${() => { deleteLogEntry(entry.id); onClose(); }}>Delete</button>
+          <button class="btn" onClick=${submit}>Save</button>
+        </div>
+      <//>`;
+    }
+
+    // Split a 0..100 square into n slices fanning from the center, aligned so that
+    // n=2 → two triangles (a diagonal), n=4 → four triangles (both diagonals).
+    function squareSlices(n) {
+      const S = 100, c = 50;
+      const corners = [{ a: 45, x: 100, y: 100 }, { a: 135, x: 0, y: 100 }, { a: 225, x: 0, y: 0 }, { a: 315, x: 100, y: 0 }];
+      const perim = deg => {
+        const r = deg * Math.PI / 180, dx = Math.cos(r), dy = Math.sin(r);
+        const tx = dx > 1e-9 ? (S - c) / dx : dx < -1e-9 ? (0 - c) / dx : Infinity;
+        const ty = dy > 1e-9 ? (S - c) / dy : dy < -1e-9 ? (0 - c) / dy : Infinity;
+        const t = Math.min(tx, ty);
+        return { x: c + t * dx, y: c + t * dy };
+      };
+      const slices = [];
+      for (let i = 0; i < n; i++) {
+        const a0 = 45 + i * 360 / n, a1 = 45 + (i + 1) * 360 / n;
+        const pts = [{ x: c, y: c }, perim(a0)];
+        corners.forEach(cn => {
+          let ca = cn.a; while (ca <= a0) ca += 360;
+          if (ca > a0 + 1e-6 && ca < a1 - 1e-6) pts.push({ x: cn.x, y: cn.y });
+        });
+        pts.push(perim(a1));
+        slices.push(pts);
+      }
+      return slices;
+    }
+
+    // Outlined + shaded square for a calendar day; one region per logged category color.
+    function CalDayShade({ colors }) {
+      if (!colors || colors.length === 0) return null;
+      const cs = colors.slice(0, 4);
+      if (cs.length === 1) {
+        return html`<svg class="cal-shade" viewBox="0 0 100 100" preserveAspectRatio="none">
+          <rect x="2" y="2" width="96" height="96" fill=${lighten(cs[0], 0.6)} stroke=${cs[0]} stroke-width="2" vector-effect="non-scaling-stroke" />
+        </svg>`;
+      }
+      const slices = squareSlices(cs.length);
+      return html`<svg class="cal-shade" viewBox="0 0 100 100" preserveAspectRatio="none">
+        ${slices.map((pts, i) => {
+          const dStr = pts.map((p, j) => `${j === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ') + ' Z';
+          return html`<path key=${i} d=${dStr} fill=${lighten(cs[i], 0.6)} stroke=${cs[i]} stroke-width="1.5" stroke-linejoin="round" vector-effect="non-scaling-stroke" />`;
+        })}
+      </svg>`;
+    }
+
+    function Calendar({ selected, onSelect, dayColors }) {
+      const sel = parseKey(selected);
+      const [view, setView] = useState({ y: sel.getFullYear(), m: sel.getMonth() });
+      const first = new Date(view.y, view.m, 1);
+      const startDow = first.getDay();
+      const daysInMonth = new Date(view.y, view.m + 1, 0).getDate();
+      const cells = [];
+      for (let i = 0; i < startDow; i++) {
+        const d = new Date(view.y, view.m, -(startDow - 1 - i));
+        cells.push({ d, other: true });
+      }
+      for (let i = 1; i <= daysInMonth; i++) cells.push({ d: new Date(view.y, view.m, i), other: false });
+      while (cells.length % 7 !== 0) {
+        const last = cells[cells.length - 1].d;
+        cells.push({ d: new Date(last.getFullYear(), last.getMonth(), last.getDate() + 1), other: true });
+      }
+      const shift = delta => {
+        let m = view.m + delta, y = view.y;
+        if (m < 0) { m = 11; y--; } if (m > 11) { m = 0; y++; }
+        setView({ y, m });
+      };
+      const tk = todayKey();
+      return html`<div class="card">
+        <div class="cal-head">
+          <button class="cal-nav" onClick=${() => shift(-1)}>‹</button>
+          <span class="mtitle">${MONTHS[view.m]} ${view.y}</span>
+          <button class="cal-nav" onClick=${() => shift(1)}>›</button>
+        </div>
+        <div class="cal-grid">
+          ${DOW.map((d, i) => html`<div class="cal-dow" key=${'dow' + i}>${d}</div>`)}
+          ${cells.map(c => {
+            const k = toKey(c.d);
+            const cls = ['cal-cell'];
+            if (c.other) cls.push('other');
+            if (k === tk) cls.push('today');
+            if (k === selected) cls.push('selected');
+            return html`<div class=${cls.join(' ')} key=${k} onClick=${() => onSelect(k)}>
+              <${CalDayShade} colors=${dayColors[k] || []} />
+              <span class="num">${c.d.getDate()}</span>
+            </div>`;
+          })}
+        </div>
+      </div>`;
+    }
+
+    function TodayPage() {
+      const d = useData();
+      const [selected, setSelected] = useState(todayKey());
+      const [adding, setAdding] = useState(false);
+      const [editEntry, setEditEntry] = useState(null);
+
+      // Map each logged day → ordered list of distinct category colors (uncategorized last).
+      const dayColors = useMemo(() => {
+        const sets = {};
+        d.logEntries.forEach(l => {
+          const ex = exerciseById(l.exerciseId);
+          const catId = ex && ex.categoryId ? ex.categoryId : null;
+          (sets[l.date] || (sets[l.date] = new Set())).add(catId);
+        });
+        const catIdx = id => id == null ? 9999 : d.categories.findIndex(c => c.id === id);
+        const out = {};
+        Object.keys(sets).forEach(k => {
+          out[k] = [...sets[k]]
+            .sort((a, b) => catIdx(a) - catIdx(b))
+            .map(id => id == null ? UNCATEGORIZED_COLOR : categoryColor(id));
+        });
+        return out;
+      }, [d.logEntries, d.exercises, d.categories]);
+      const dayLogs = d.logEntries.filter(l => l.date === selected);
+
+      // group by routine for display
+      return html`<div class="page">
+        <div class="page-title">Log</div>
+        <${Calendar} selected=${selected} onSelect=${setSelected} dayColors=${dayColors} />
+
+        <div class="row-between" style="margin:18px 4px 10px">
+          <strong>${selected === todayKey() ? 'Today' : prettyDate(selected)}</strong>
+          <button class="btn ghost" onClick=${() => setAdding(true)}>+ Log exercise or routine</button>
+        </div>
+
+        ${dayLogs.length === 0
+          ? html`<div class="empty"><div class="big">▦</div>Nothing logged.<br/>Tap “+ Log exercise or routine”.</div>`
+          : html`<div class="card">
+              ${dayLogs.map(l => {
+                const ex = exerciseById(l.exerciseId);
+                if (!ex) return null;
+                const valStr = (ex.metricIds || []).map(mid => l.values[mid] != null ? `${l.values[mid]} ${metricName(mid)}` : null).filter(Boolean).join(' · ');
+                return html`<div class="log-item" key=${l.id} onClick=${() => setEditEntry(l)} style="cursor:pointer">
+                  <div>
+                    <div><strong>${ex.name}</strong> ${l.routineId && html`<span class="muted" style="font-size:12px">(${(data.routines.find(r => r.id === l.routineId) || {}).name || 'routine'})</span>`}</div>
+                    <div class="log-vals">${valStr || 'logged'}</div>
+                    ${l.note && html`<div class="log-note">${l.note}</div>`}
+                  </div>
+                  <span class="muted">›</span>
+                </div>`;
+              })}
+            </div>`}
+
+        ${adding && html`<${AddLogSheet} dateKey=${selected} onClose=${() => setAdding(false)} />`}
+        ${editEntry && html`<${EditLogSheet} entry=${editEntry} onClose=${() => setEditEntry(null)} />`}
+      </div>`;
+    }
+
+    /* =========================== PLOT PAGE ============================ */
+    function LineChart({ series, xDomain, yDomain, title, xLabel, yLabel }) {
+      // series: [{name, color, points:[{x:dateKey, y:number}]}]
+      // xDomain/yDomain: optional {min, max} overrides (x as dateKeys, y as numbers).
+      const W = 640, H = 340, padL = 60, padR = 16, padT = 40, padB = 52;
+      const AXIS = '#333333', SANS = "system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif";
+      const toTime = k => parseKey(k).getTime();
+      const allPts = series.flatMap(s => s.points.map(p => ({ ...p, t: toTime(p.x) })));
+
+      const svgRef = useRef(null);
+      const touchRef = useRef(null);  // {d, cx, cy} of last 2-finger gesture (cx/cy in svg coords)
+      const viewRef = useRef(null);   // current view, for stale-free reads inside touch handlers
+      const [view, setView] = useState(null); // null = fit to base domain; else {tMin,tMax,yMin,yMax}
+
+      // Base domain — overrides where provided, else span of the data.
+      let baseTMin, baseTMax, baseYMin, baseYMax;
+      if (allPts.length) {
+        baseTMin = (xDomain && xDomain.min) ? toTime(xDomain.min) : Math.min(...allPts.map(p => p.t));
+        baseTMax = (xDomain && xDomain.max) ? toTime(xDomain.max) : Math.max(...allPts.map(p => p.t));
+        if (baseTMax < baseTMin) [baseTMin, baseTMax] = [baseTMax, baseTMin];
+        baseYMin = (yDomain && yDomain.min != null) ? yDomain.min : Math.min(...allPts.map(p => p.y), 0);
+        baseYMax = (yDomain && yDomain.max != null) ? yDomain.max : Math.max(...allPts.map(p => p.y), 0);
+        if (baseYMax < baseYMin) [baseYMin, baseYMax] = [baseYMax, baseYMin];
+      }
+      // Reset any zoom whenever the underlying data / requested domain changes.
+      useEffect(() => { setView(null); }, [baseTMin, baseTMax, baseYMin, baseYMax, allPts.length]);
+
+      if (allPts.length === 0) return html`<div class="empty">No data points yet for this selection.</div>`;
+
+      const v = view || { tMin: baseTMin, tMax: baseTMax, yMin: baseYMin, yMax: baseYMax };
+      viewRef.current = v;
+      const yRange = (v.yMax - v.yMin) || 1;
+
+      // Reserve a right-side gutter (inside the white rect) for the legend so it never covers data.
+      const legRowH = 18;
+      const legMaxChars = Math.max(0, ...series.map(s => s.name.length));
+      const hasLegend = series.length > 0;
+      const legW = hasLegend ? Math.min(34 + legMaxChars * 7 + 10, 220) : 0;
+      const legGap = hasLegend ? 12 : 0;
+
+      const plotW = W - padL - padR - legW - legGap, plotH = H - padT - padB;
+      const sx = t => v.tMin === v.tMax ? padL + plotW / 2 : padL + ((t - v.tMin) / (v.tMax - v.tMin)) * plotW;
+      const sy = val => padT + (1 - (val - v.yMin) / yRange) * plotH;
+
+      // --- pinch-to-zoom (+ pan) with two fingers ---
+      const distOf = (a, b) => Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+      const centroid = (a, b) => {
+        const r = svgRef.current.getBoundingClientRect();
+        return {
+          cx: ((a.clientX + b.clientX) / 2 - r.left) / r.width * W,
+          cy: ((a.clientY + b.clientY) / 2 - r.top) / r.height * H,
+        };
+      };
+      const onTouchStart = e => {
+        if (e.touches.length === 2) {
+          const c = centroid(e.touches[0], e.touches[1]);
+          touchRef.current = { d: distOf(e.touches[0], e.touches[1]), cx: c.cx, cy: c.cy };
+        }
+      };
+      const onTouchMove = e => {
+        if (e.touches.length !== 2 || !touchRef.current) return;
+        const nd = distOf(e.touches[0], e.touches[1]);
+        const c = centroid(e.touches[0], e.touches[1]);
+        const prev = touchRef.current;
+        const cur = viewRef.current;
+        let scale = prev.d / nd; // spread → ratio<1 → shrink range → zoom in
+        if (!isFinite(scale) || scale <= 0) scale = 1;
+        scale = Math.max(0.5, Math.min(2, scale));
+        // Data coords under the previous centroid (anchor), pinned to the new centroid → pan + zoom.
+        const fxOld = (prev.cx - padL) / plotW, fyOld = 1 - (prev.cy - padT) / plotH;
+        const dataT = cur.tMin + fxOld * (cur.tMax - cur.tMin);
+        const dataY = cur.yMin + fyOld * (cur.yMax - cur.yMin);
+        const newTR = (cur.tMax - cur.tMin) * scale, newYR = (cur.yMax - cur.yMin) * scale;
+        const fxNew = (c.cx - padL) / plotW, fyNew = 1 - (c.cy - padT) / plotH;
+        const tMin = dataT - fxNew * newTR, yMin = dataY - fyNew * newYR;
+        setView({ tMin, tMax: tMin + newTR, yMin, yMax: yMin + newYR });
+        touchRef.current = { d: nd, cx: c.cx, cy: c.cy };
+      };
+      const onTouchEnd = e => { if (e.touches.length < 2) touchRef.current = null; };
+
+      // --- export the chart as a PNG (copy to clipboard or download) ---
+      const saveBlob = blob => {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = `oox-plot-${todayKey()}.png`; a.click();
+        URL.revokeObjectURL(url);
+      };
+      const exportPng = mode => {
+        const svg = svgRef.current;
+        if (!svg) return;
+        const clone = svg.cloneNode(true);
+        clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+        clone.setAttribute('width', W);
+        clone.setAttribute('height', H);
+        const bg = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        bg.setAttribute('x', 0); bg.setAttribute('y', 0);
+        bg.setAttribute('width', W); bg.setAttribute('height', H); bg.setAttribute('fill', '#ffffff');
+        clone.insertBefore(bg, clone.firstChild);
+        const xml = new XMLSerializer().serializeToString(clone);
+        const src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(xml);
+        const img = new Image();
+        const scale = 2;
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          canvas.width = W * scale; canvas.height = H * scale;
+          const ctx = canvas.getContext('2d');
+          ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          canvas.toBlob(blob => {
+            if (!blob) { alert('Could not render image.'); return; }
+            if (mode === 'copy' && navigator.clipboard && window.ClipboardItem) {
+              navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })])
+                .catch(() => { alert('Copy not supported here — downloading instead.'); saveBlob(blob); });
+            } else {
+              saveBlob(blob);
+            }
+          }, 'image/png');
+        };
+        img.onerror = () => alert('Could not render image.');
+        img.src = src;
+      };
+
+      const yticks = 4;
+      const tickVals = Array.from({ length: yticks + 1 }, (_, i) => v.yMin + (yRange * i / yticks));
+      const xticks = 5;
+      const xTickTimes = v.tMin === v.tMax ? [v.tMin] : Array.from({ length: xticks + 1 }, (_, i) => v.tMin + ((v.tMax - v.tMin) * i / xticks));
+      const fmtTick = t => { const d = new Date(t); return (d.getMonth() + 1) + '/' + d.getDate(); };
+      const clipId = 'plotclip';
+
+      // legend box, in the reserved right-side gutter, vertically centered
+      const legH = series.length * legRowH + 10;
+      const legX = padL + plotW + legGap;
+      const legY = padT + Math.max(0, (plotH - legH) / 2);
+
+      return html`<div style="position:relative">
+        <svg ref=${svgRef} viewBox=${`0 0 ${W} ${H}`}
+          onTouchStart=${onTouchStart} onTouchMove=${onTouchMove} onTouchEnd=${onTouchEnd} onTouchCancel=${onTouchEnd}
+          style="width:100%; height:auto; background:#fff; display:block; touch-action:none">
+          <clipPath id=${clipId}><rect x=${padL - 6} y=${padT - 6} width=${plotW + 12} height=${plotH + 12} /></clipPath>
+          ${tickVals.map((tv, i) => html`<g key=${'y' + i}>
+            <line x1=${padL - 4} y1=${sy(tv)} x2=${padL} y2=${sy(tv)} stroke=${AXIS} stroke-width="1" />
+            <text x=${padL - 8} y=${sy(tv) + 4} text-anchor="end" fill=${AXIS} font-size="12" font-family=${SANS}>${(Math.round(tv * 100) / 100)}</text>
+          </g>`)}
+          ${xTickTimes.map((t, i) => html`<g key=${'x' + i}>
+            <line x1=${sx(t)} y1=${H - padB} x2=${sx(t)} y2=${H - padB + 4} stroke=${AXIS} stroke-width="1" />
+            <text x=${sx(t)} y=${H - padB + 17} text-anchor="middle" fill=${AXIS} font-size="12" font-family=${SANS}>${fmtTick(t)}</text>
+          </g>`)}
+          <g clip-path=${`url(#${clipId})`}>
+          ${series.map(s => {
+            const pts = s.points.map(p => ({ ...p, t: toTime(p.x) })).sort((a, b) => a.t - b.t);
+            const dStr = pts.map((p, i) => `${i === 0 ? 'M' : 'L'} ${sx(p.t)} ${sy(p.y)}`).join(' ');
+            return html`<g key=${s.name}>
+              <path d=${dStr} fill="none" stroke=${s.color} stroke-width="1.75" stroke-linejoin="round" stroke-linecap="round" />
+              ${pts.map((p, i) => html`<circle key=${i} cx=${sx(p.t)} cy=${sy(p.y)} r="3" fill=${s.color} />`)}
+            </g>`;
+          })}
+          </g>
+          ${/* spines: left + bottom only, seaborn-style */''}
+          <line x1=${padL} y1=${padT} x2=${padL} y2=${H - padB} stroke=${AXIS} stroke-width="1.2" />
+          <line x1=${padL} y1=${H - padB} x2=${padL + plotW} y2=${H - padB} stroke=${AXIS} stroke-width="1.2" />
+          ${title && html`<text x=${padL + plotW / 2} y="24" text-anchor="middle" fill=${AXIS} font-size="17" font-weight="700" font-family=${SANS}>${title}</text>`}
+          ${xLabel && html`<text x=${padL + plotW / 2} y=${H - 8} text-anchor="middle" fill=${AXIS} font-size="13" font-family=${SANS}>${xLabel}</text>`}
+          ${yLabel && html`<text x="16" y=${padT + plotH / 2} text-anchor="middle" fill=${AXIS} font-size="13" font-family=${SANS} transform=${`rotate(-90 16 ${padT + plotH / 2})`}>${yLabel}</text>`}
+          ${series.length > 0 && html`<g>
+            <rect x=${legX} y=${legY} width=${legW} height=${legH} fill="rgba(255,255,255,0.9)" stroke=${AXIS} stroke-width="0.75" />
+            ${series.map((s, i) => {
+              const ry = legY + 5 + i * legRowH;
+              const cy = ry + legRowH / 2 - 2;
+              return html`<g key=${s.name}>
+                <line x1=${legX + 8} y1=${cy} x2=${legX + 26} y2=${cy} stroke=${s.color} stroke-width="2.5" stroke-linecap="round" />
+                <circle cx=${legX + 17} cy=${cy} r="3" fill=${s.color} />
+                <text x=${legX + 32} y=${cy + 4} fill=${AXIS} font-size="12" font-family=${SANS}>${s.name}</text>
+              </g>`;
+            })}
+          </g>`}
+        </svg>
+        ${view && html`<button class="btn ghost"
+          style="position:absolute; top:6px; left:6px; width:auto; padding:4px 10px; font-size:12px; background:rgba(255,255,255,.85); border:1px solid var(--border)"
+          onClick=${() => setView(null)}>Reset zoom</button>`}
+        <div style="display:flex; gap:8px; margin-top:8px">
+          <button class="btn secondary" style="flex:1; width:auto; padding:10px; font-size:13px" onClick=${() => exportPng('copy')}>Copy image</button>
+          <button class="btn secondary" style="flex:1; width:auto; padding:10px; font-size:13px" onClick=${() => exportPng('save')}>Save image</button>
+        </div>
+      </div>`;
+    }
+
+    // pink, green, orange, blue, purple
+    const PALETTE = ['#ec2b86', '#8cc63f', '#f7921e', '#29abe2', '#c724b1'];
+
+    function PlotPage() {
+      const d = useData();
+      const [exId, setExId] = useState('');
+      const [selMetrics, setSelMetrics] = useState([]);
+      const [xMin, setXMin] = useState('');
+      const [xMax, setXMax] = useState('');
+      const [yMin, setYMin] = useState('');
+      const [yMax, setYMax] = useState('');
+
+      const ex = exerciseById(exId);
+      useEffect(() => {
+        setSelMetrics(ex ? (ex.metricIds || []) : []);
+        setXMin(''); setXMax(''); setYMin(''); setYMax('');
+      }, [exId]);
+
+      const xDomain = { min: xMin || null, max: xMax || null };
+      const yDomain = {
+        min: yMin.trim() !== '' && !isNaN(parseFloat(yMin)) ? parseFloat(yMin) : null,
+        max: yMax.trim() !== '' && !isNaN(parseFloat(yMax)) ? parseFloat(yMax) : null,
+      };
+
+      const series = useMemo(() => {
+        if (!ex) return [];
+        const logs = d.logEntries.filter(l => l.exerciseId === exId).slice().sort((a, b) => a.date < b.date ? -1 : 1);
+        return selMetrics.map((mid, i) => ({
+          name: metricName(mid),
+          color: PALETTE[i % PALETTE.length],
+          points: logs.filter(l => l.values[mid] != null).map(l => ({ x: l.date, y: l.values[mid] })),
+        })).filter(s => s.points.length > 0);
+      }, [exId, selMetrics, d.logEntries]);
+
+      return html`<div class="page">
+        <div class="page-title">Plot</div>
+        ${d.exercises.length === 0
+          ? html`<div class="empty"><div class="big">∿</div>Define and log exercises<br/>to see plots.</div>`
+          : html`<div>
+            <label class="field">
+              <span class="lbl">Exercise</span>
+              <select value=${exId} onChange=${e => setExId(e.target.value)}>
+                <option value="">Choose an exercise…</option>
+                ${d.exercises.map(e => html`<option value=${e.id} key=${e.id}>${e.name}</option>`)}
+              </select>
+            </label>
+
+            ${ex && (ex.metricIds || []).length === 0 && html`<div class="muted">This exercise has no metrics to plot.</div>`}
+
+            ${ex && (ex.metricIds || []).length > 0 && html`
+              <label class="field">
+                <span class="lbl">Metrics</span>
+                <div class="chips">
+                  ${ex.metricIds.map((mid, i) => html`
+                    <span class=${'chip ' + (selMetrics.includes(mid) ? 'on' : '')} key=${mid}
+                      onClick=${() => setSelMetrics(selMetrics.includes(mid) ? selMetrics.filter(x => x !== mid) : [...selMetrics, mid])}>
+                      ${metricName(mid)}
+                    </span>`)}
+                </div>
+              </label>
+
+              <label class="field">
+                <span class="lbl">X-axis range (dates)</span>
+                <div style="display:flex; align-items:center; gap:8px">
+                  <input type="date" style="flex:1" value=${xMin} onInput=${e => setXMin(e.target.value)} />
+                  <span class="muted">to</span>
+                  <input type="date" style="flex:1" value=${xMax} onInput=${e => setXMax(e.target.value)} />
+                </div>
+              </label>
+
+              <label class="field">
+                <span class="lbl">Y-axis range</span>
+                <div style="display:flex; align-items:center; gap:8px">
+                  <input type="number" inputmode="decimal" placeholder="min" style="flex:1" value=${yMin} onInput=${e => setYMin(e.target.value)} />
+                  <span class="muted">to</span>
+                  <input type="number" inputmode="decimal" placeholder="max" style="flex:1" value=${yMax} onInput=${e => setYMax(e.target.value)} />
+                </div>
+              </label>
+
+              <div style="margin-top:8px">
+                <${LineChart} series=${series} xDomain=${xDomain} yDomain=${yDomain}
+                  title=${'Lior\'s ' + ex.name + ' Progress'} xLabel="Time" yLabel="Metric" />
+              </div>
+            `}
+          </div>`}
+      </div>`;
+    }
+
+    /* ========================== BACKUP BAR ============================ */
+    function BackupBar() {
+      const fileRef = useRef(null);
+      const download = (filename, text, mime) => {
+        const blob = new Blob([text], { type: mime });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = filename; a.click();
+        URL.revokeObjectURL(url);
+      };
+      const doExport = () => download(`oox-backup-${todayKey()}.json`, JSON.stringify(data, null, 2), 'application/json');
+      // Long-form (tidy) CSV: one row per metric value, ready for seaborn.
+      const doExportCsv = () => {
+        const esc = v => {
+          const s = (v === null || v === undefined) ? '' : String(v);
+          return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+        };
+        const cols = ['date', 'exercise', 'type', 'category', 'metric', 'value', 'routine'];
+        const rows = [cols.join(',')];
+        const entries = data.logEntries.slice().sort((a, b) =>
+          a.date < b.date ? -1 : a.date > b.date ? 1 : (a.createdAt || 0) - (b.createdAt || 0));
+        entries.forEach(l => {
+          const ex = exerciseById(l.exerciseId);
+          if (!ex) return;
+          const type = (ex.types || []).join(';');
+          const category = ex.categoryId ? categoryName(ex.categoryId) : '';
+          const routine = l.routineId ? ((data.routines.find(r => r.id === l.routineId) || {}).name || '') : '';
+          const base = [l.date, ex.name, type, category];
+          const tail = [routine];
+          const valKeys = Object.keys(l.values || {});
+          if (valKeys.length === 0) {
+            rows.push([...base, '', '', ...tail].map(esc).join(','));
+          } else {
+            valKeys.forEach(mid => {
+              rows.push([...base, metricName(mid), l.values[mid], ...tail].map(esc).join(','));
+            });
+          }
+        });
+        download(`oox-data-${todayKey()}.csv`, rows.join('\r\n'), 'text/csv;charset=utf-8');
+      };
+      const doImport = e => {
+        const file = e.target.files[0]; if (!file) return;
+        const reader = new FileReader();
+        reader.onload = () => {
+          try {
+            const parsed = JSON.parse(reader.result);
+            if (!parsed || typeof parsed !== 'object') throw new Error('bad');
+            if (!confirm('Replace ALL current data with this backup?')) return;
+            data = { ...emptyData(), ...parsed };
+            save();
+            alert('Imported.');
+          } catch { alert('Could not read that file.'); }
+        };
+        reader.readAsText(file);
+        e.target.value = '';
+      };
+      const PY = [
+        'import pandas as pd, seaborn as sns',
+        'df = pd.read_csv("oox-data.csv", parse_dates=["date"])',
+        'd = df[df.exercise == "Elliptical"]',
+        'sns.lineplot(data=d, x="date", y="value", hue="metric")',
+      ].join('\n');
+      return html`<div>
+        <div class="section-title">Export &amp; Backup</div>
+        <div class="btn-row">
+          <button class="btn secondary" onClick=${doExportCsv}>Export CSV</button>
+          <button class="btn secondary" onClick=${doExport}>Export JSON</button>
+        </div>
+        <button class="btn secondary" style="margin-top:10px" onClick=${() => fileRef.current.click()}>Import JSON backup</button>
+        <input type="file" accept="application/json" ref=${fileRef} style="display:none" onChange=${doImport} />
+        <div class="muted" style="font-size:13px; margin-top:14px">CSV is long-form (one row per metric value) — plot it in Python with seaborn:</div>
+        <pre style="background:var(--surface-2); border:1px solid var(--border); padding:12px; margin:8px 0 0; overflow-x:auto; font-size:12px; line-height:1.5; color:var(--text)">${PY}</pre>
+      </div>`;
+    }
+
+    /* ============================== APP =============================== */
+    function App() {
+      const [tab, setTab] = useState('today');
+      const Page = tab === 'today' ? TodayPage : tab === 'define' ? DefinePage : PlotPage;
+      const navItem = (key, ico, label) => html`
+        <button class=${tab === key ? 'active' : ''} onClick=${() => setTab(key)}>
+          <span class="ico">${ico}</span><span>${label}</span>
+        </button>`;
+      return html`<${Fragment}>
+        <${Page} />
+        <div class="nav">
+          ${navItem('define', '≡', 'Define')}
+          ${navItem('today', '▦', 'Log')}
+          ${navItem('plot', '∿', 'Plot')}
+        </div>
+      <//>`;
+    }
+
+    render(html`<${App} />`, document.getElementById('app'));
+  </script>
+</body>
+</html>
