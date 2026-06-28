@@ -152,7 +152,8 @@
       max-height: 88vh; overflow-y: auto; animation: slideup .22s ease;
     }
     @keyframes slideup { from { transform: translateY(100%);} to { transform: translateY(0);} }
-    .sheet-grip { width: 40px; height: 5px; background: var(--border); border-radius: 0; margin: 8px auto 14px; }
+    .sheet { transition: transform .15s ease; }
+    .sheet-grip { width: 40px; height: 5px; background: var(--border); border-radius: 0; margin: 8px auto 14px; cursor: grab; }
     .sheet h2 { margin: 0 0 16px; font-size: 22px; font-weight: 800; }
 
     .row-between { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
@@ -380,9 +381,41 @@
 
     /* ---------------------------- Modal ------------------------------- */
     function Sheet({ title, onClose, children }) {
+      const sheetRef = useRef(null);
+      const dragState = useRef(null);
+
+      const onTouchStart = e => {
+        if (e.touches.length !== 1) return;
+        dragState.current = { startY: e.touches[0].clientY, dy: 0 };
+      };
+
+      const onTouchMove = e => {
+        if (!dragState.current) return;
+        const dy = e.touches[0].clientY - dragState.current.startY;
+        if (dy < 0) { dragState.current = null; return; } // upward drag — cancel
+        dragState.current.dy = dy;
+        if (sheetRef.current) {
+          sheetRef.current.style.transition = 'none';
+          sheetRef.current.style.transform = `translateY(${dy}px)`;
+        }
+      };
+
+      const onTouchEnd = () => {
+        if (!dragState.current) return;
+        const { dy } = dragState.current;
+        dragState.current = null;
+        if (sheetRef.current) {
+          sheetRef.current.style.transition = '';
+          sheetRef.current.style.transform = '';
+        }
+        if (dy > 80) onClose();
+      };
+
       return html`
         <div class="overlay" onClick=${onClose}>
-          <div class="sheet" onClick=${e => e.stopPropagation()}>
+          <div class="sheet" ref=${sheetRef}
+            onTouchStart=${onTouchStart} onTouchMove=${onTouchMove} onTouchEnd=${onTouchEnd}
+            onClick=${e => e.stopPropagation()}>
             <div class="sheet-grip"></div>
             ${title && html`<h2>${title}</h2>`}
             ${children}
@@ -909,7 +942,6 @@
     function LineChart({ series, xDomain, yDomain, title, xLabel, yLabel }) {
       // series: [{name, color, points:[{x:dateKey, y:number}]}]
       // xDomain/yDomain: optional {min, max} overrides (x as dateKeys, y as numbers).
-      const W = 640, H = 340, padL = 60, padR = 16, padT = 40, padB = 52;
       const AXIS = '#333333', SANS = "system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif";
       const toTime = k => parseKey(k).getTime();
       const allPts = series.flatMap(s => s.points.map(p => ({ ...p, t: toTime(p.x) })));
@@ -919,6 +951,13 @@
       const viewRef = useRef(null);   // current view, for stale-free reads inside touch handlers
       const [view, setView] = useState(null); // null = fit to base domain; else {tMin,tMax,yMin,yMax}
       const [tooltip, setTooltip] = useState(null); // {key,cx,cy,note,date,seriesName}
+      const [fullScreen, setFullScreen] = useState(false);
+
+      // Fullscreen uses a narrower/taller viewBox so the chart fills portrait phone screens,
+      // and a font scale (fs) so axis labels are readable at that physical size.
+      const W = fullScreen ? 400 : 640, H = fullScreen ? 600 : 340;
+      const padL = fullScreen ? 70 : 60, padR = 16, padT = fullScreen ? 44 : 40, padB = fullScreen ? 66 : 52;
+      const fs = fullScreen ? 1.45 : 1;
 
       // Base domain — overrides where provided, else span of the data.
       let baseTMin, baseTMax, baseYMin, baseYMax;
@@ -1040,19 +1079,18 @@
       const legX = padL + plotW + legGap;
       const legY = padT + Math.max(0, (plotH - legH) / 2);
 
-      return html`<div style="position:relative">
-        <svg ref=${svgRef} viewBox=${`0 0 ${W} ${H}`}
+      const svgEl = html`<svg ref=${svgRef} viewBox=${`0 0 ${W} ${H}`}
           onTouchStart=${onTouchStart} onTouchMove=${onTouchMove} onTouchEnd=${onTouchEnd} onTouchCancel=${onTouchEnd}
           onClick=${() => setTooltip(null)}
-          style="width:100%; height:auto; background:#fff; display:block; touch-action:none">
+          style=${"width:100%; " + (fullScreen ? "max-height:calc(100dvh - 52px)" : "height:auto") + "; background:#fff; display:block; touch-action:none"}>
           <clipPath id=${clipId}><rect x=${padL - 6} y=${padT - 6} width=${plotW + 12} height=${plotH + 12} /></clipPath>
           ${tickVals.map((tv, i) => html`<g key=${'y' + i}>
             <line x1=${padL - 4} y1=${sy(tv)} x2=${padL} y2=${sy(tv)} stroke=${AXIS} stroke-width="1" />
-            <text x=${padL - 8} y=${sy(tv) + 4} text-anchor="end" fill=${AXIS} font-size="12" font-family=${SANS}>${(Math.round(tv * 100) / 100)}</text>
+            <text x=${padL - 8} y=${sy(tv) + 4} text-anchor="end" fill=${AXIS} font-size=${12 * fs} font-family=${SANS}>${(Math.round(tv * 100) / 100)}</text>
           </g>`)}
           ${xTickTimes.map((t, i) => html`<g key=${'x' + i}>
             <line x1=${sx(t)} y1=${H - padB} x2=${sx(t)} y2=${H - padB + 4} stroke=${AXIS} stroke-width="1" />
-            <text x=${sx(t)} y=${H - padB + 17} text-anchor="middle" fill=${AXIS} font-size="12" font-family=${SANS}>${fmtTick(t)}</text>
+            <text x=${sx(t)} y=${H - padB + 17 * fs} text-anchor="middle" fill=${AXIS} font-size=${12 * fs} font-family=${SANS}>${fmtTick(t)}</text>
           </g>`)}
           <g clip-path=${`url(#${clipId})`}>
           ${series.map(s => {
@@ -1072,9 +1110,9 @@
           ${/* spines: left + bottom only, seaborn-style */''}
           <line x1=${padL} y1=${padT} x2=${padL} y2=${H - padB} stroke=${AXIS} stroke-width="1.2" />
           <line x1=${padL} y1=${H - padB} x2=${padL + plotW} y2=${H - padB} stroke=${AXIS} stroke-width="1.2" />
-          ${title && html`<text x=${padL + plotW / 2} y="24" text-anchor="middle" fill=${AXIS} font-size="17" font-weight="700" font-family=${SANS}>${title}</text>`}
-          ${xLabel && html`<text x=${padL + plotW / 2} y=${H - 8} text-anchor="middle" fill=${AXIS} font-size="13" font-family=${SANS}>${xLabel}</text>`}
-          ${yLabel && html`<text x="16" y=${padT + plotH / 2} text-anchor="middle" fill=${AXIS} font-size="13" font-family=${SANS} transform=${`rotate(-90 16 ${padT + plotH / 2})`}>${yLabel}</text>`}
+          ${title && html`<text x=${padL + plotW / 2} y=${24 * fs} text-anchor="middle" fill=${AXIS} font-size=${17 * fs} font-weight="700" font-family=${SANS}>${title}</text>`}
+          ${xLabel && html`<text x=${padL + plotW / 2} y=${H - 8} text-anchor="middle" fill=${AXIS} font-size=${13 * fs} font-family=${SANS}>${xLabel}</text>`}
+          ${yLabel && html`<text x=${16 * fs} y=${padT + plotH / 2} text-anchor="middle" fill=${AXIS} font-size=${13 * fs} font-family=${SANS} transform=${`rotate(-90 ${16 * fs} ${padT + plotH / 2})`}>${yLabel}</text>`}
           ${series.length > 0 && html`<g>
             <rect x=${legX} y=${legY} width=${legW} height=${legH} fill="rgba(255,255,255,0.9)" stroke=${AXIS} stroke-width="0.75" />
             ${series.map((s, i) => {
@@ -1083,7 +1121,7 @@
               return html`<g key=${s.name}>
                 <line x1=${legX + 8} y1=${cy} x2=${legX + 26} y2=${cy} stroke=${s.color} stroke-width="2.5" stroke-linecap="round" />
                 <circle cx=${legX + 17} cy=${cy} r="3" fill=${s.color} />
-                <text x=${legX + 32} y=${cy + 4} fill=${AXIS} font-size="12" font-family=${SANS}>${s.name}</text>
+                <text x=${legX + 32} y=${cy + 4} fill=${AXIS} font-size=${12 * fs} font-family=${SANS}>${s.name}</text>
               </g>`;
             })}
           </g>`}
@@ -1123,11 +1161,29 @@
               </text>
             </g>`;
           })()}
-        </svg>
-        ${view && html`<button class="btn ghost"
+        </svg>`;
+
+      const resetBtn = view && html`<button class="btn ghost"
           style="position:absolute; top:6px; left:6px; width:auto; padding:4px 10px; font-size:12px; background:rgba(255,255,255,.85); border:1px solid var(--border)"
-          onClick=${() => setView(null)}>Reset zoom</button>`}
+          onClick=${() => setView(null)}>Reset zoom</button>`;
+
+      if (fullScreen) {
+        return html`<div style="position:fixed; inset:0; z-index:200; background:white; display:flex; flex-direction:column">
+          <div style="display:flex; align-items:center; justify-content:flex-end; padding:calc(env(safe-area-inset-top,0px) + 6px) 10px 6px; flex-shrink:0">
+            <button class="btn ghost" style="width:auto; padding:6px 14px; font-size:14px; font-weight:700" onClick=${() => setFullScreen(false)}>✕ Exit</button>
+          </div>
+          <div style="position:relative; flex:1; display:flex; align-items:center">
+            ${svgEl}
+            ${resetBtn}
+          </div>
+        </div>`;
+      }
+
+      return html`<div style="position:relative">
+        ${svgEl}
+        ${resetBtn}
         <div style="display:flex; gap:8px; margin-top:8px">
+          <button class="btn secondary" style="flex:1; width:auto; padding:10px; font-size:13px" onClick=${() => setFullScreen(true)}>Full screen</button>
           <button class="btn secondary" style="flex:1; width:auto; padding:10px; font-size:13px" onClick=${() => exportPng('copy')}>Copy image</button>
           <button class="btn secondary" style="flex:1; width:auto; padding:10px; font-size:13px" onClick=${() => exportPng('save')}>Save image</button>
         </div>
