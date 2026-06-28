@@ -544,6 +544,12 @@
       const d = useData();
       const [sheet, setSheet] = useState(null); // {kind:'exercise'|'routine', initial}
       const [manager, setManager] = useState(false);
+      const [search, setSearch] = useState('');
+
+      const filteredExercises = d.exercises
+        .slice()
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .filter(e => e.name.toLowerCase().includes(search.toLowerCase()));
 
       return html`
         <div class="page">
@@ -554,9 +560,15 @@
           <button class="btn secondary" style="margin-top:10px" onClick=${() => setManager(true)}>Edit existing attributes</button>
 
           <div class="section-title">My Exercises</div>
+          ${d.exercises.length > 0 && html`
+            <input type="text" placeholder="Search exercises…" value=${search}
+              onInput=${e => setSearch(e.target.value)}
+              style="margin-bottom:12px" />`}
           ${d.exercises.length === 0
             ? html`<div class="empty"><div class="big">≡</div>No exercises yet.<br/>Define one to get started.</div>`
-            : d.exercises.map(e => html`
+            : filteredExercises.length === 0
+              ? html`<div class="empty" style="padding:20px">No exercises match "${search}".</div>`
+              : filteredExercises.map(e => html`
               <div class="card tappable" key=${e.id} onClick=${() => setSheet({ kind: 'exercise', initial: e })}>
                 <div class="row-between">
                   <strong style="font-size:17px">${e.name}</strong>
@@ -841,7 +853,8 @@
       const [editEntry, setEditEntry] = useState(null);
 
       // Map each logged day → ordered list of distinct category colors (uncategorized last).
-      const dayColors = useMemo(() => {
+      // Not memoized: mutation functions update arrays in-place so reference deps can't detect changes.
+      const dayColors = (() => {
         const sets = {};
         d.logEntries.forEach(l => {
           const ex = exerciseById(l.exerciseId);
@@ -856,7 +869,7 @@
             .map(id => id == null ? UNCATEGORIZED_COLOR : categoryColor(id));
         });
         return out;
-      }, [d.logEntries, d.exercises, d.categories]);
+      })();
       const dayLogs = d.logEntries.filter(l => l.date === selected);
 
       // group by routine for display
@@ -905,6 +918,7 @@
       const touchRef = useRef(null);  // {d, cx, cy} of last 2-finger gesture (cx/cy in svg coords)
       const viewRef = useRef(null);   // current view, for stale-free reads inside touch handlers
       const [view, setView] = useState(null); // null = fit to base domain; else {tMin,tMax,yMin,yMax}
+      const [tooltip, setTooltip] = useState(null); // {key,cx,cy,note,date,seriesName}
 
       // Base domain — overrides where provided, else span of the data.
       let baseTMin, baseTMax, baseYMin, baseYMax;
@@ -917,7 +931,7 @@
         if (baseYMax < baseYMin) [baseYMin, baseYMax] = [baseYMax, baseYMin];
       }
       // Reset any zoom whenever the underlying data / requested domain changes.
-      useEffect(() => { setView(null); }, [baseTMin, baseTMax, baseYMin, baseYMax, allPts.length]);
+      useEffect(() => { setView(null); setTooltip(null); }, [baseTMin, baseTMax, baseYMin, baseYMax, allPts.length]);
 
       if (allPts.length === 0) return html`<div class="empty">No data points yet for this selection.</div>`;
 
@@ -1029,6 +1043,7 @@
       return html`<div style="position:relative">
         <svg ref=${svgRef} viewBox=${`0 0 ${W} ${H}`}
           onTouchStart=${onTouchStart} onTouchMove=${onTouchMove} onTouchEnd=${onTouchEnd} onTouchCancel=${onTouchEnd}
+          onClick=${() => setTooltip(null)}
           style="width:100%; height:auto; background:#fff; display:block; touch-action:none">
           <clipPath id=${clipId}><rect x=${padL - 6} y=${padT - 6} width=${plotW + 12} height=${plotH + 12} /></clipPath>
           ${tickVals.map((tv, i) => html`<g key=${'y' + i}>
@@ -1045,7 +1060,12 @@
             const dStr = pts.map((p, i) => `${i === 0 ? 'M' : 'L'} ${sx(p.t)} ${sy(p.y)}`).join(' ');
             return html`<g key=${s.name}>
               <path d=${dStr} fill="none" stroke=${s.color} stroke-width="1.75" stroke-linejoin="round" stroke-linecap="round" />
-              ${pts.map((p, i) => html`<circle key=${i} cx=${sx(p.t)} cy=${sy(p.y)} r="3" fill=${s.color} />`)}
+              ${pts.map((p, i) => {
+                const key = p.x + '_' + s.name;
+                const active = tooltip && tooltip.key === key;
+                return html`<circle key=${i} cx=${sx(p.t)} cy=${sy(p.y)} r=${active ? 5 : 3} fill=${s.color} style="cursor:pointer"
+                  onClick=${e => { e.stopPropagation(); setTooltip(active ? null : { key, cx: sx(p.t), cy: sy(p.y), note: p.note, date: p.x, seriesName: s.name }); }} />`;
+              })}
             </g>`;
           })}
           </g>
@@ -1067,6 +1087,42 @@
               </g>`;
             })}
           </g>`}
+          ${tooltip && (() => {
+            const wrapText = (text, maxChars) => {
+              const words = text.split(/\s+/);
+              const lines = [];
+              let cur = '';
+              for (const w of words) {
+                const candidate = cur ? cur + ' ' + w : w;
+                if (candidate.length > maxChars) {
+                  if (cur) lines.push(cur);
+                  cur = w.length > maxChars ? w.slice(0, maxChars - 1) + '…' : w;
+                } else {
+                  cur = candidate;
+                }
+                if (lines.length >= 3) break;
+              }
+              if (cur && lines.length < 3) lines.push(cur);
+              if (lines.length === 3 && lines[2].length > maxChars - 1) lines[2] = lines[2].slice(0, maxChars - 2) + '…';
+              return lines;
+            };
+            const isNoNote = !tooltip.note;
+            const displayNote = isNoNote ? '[no note]' : tooltip.note;
+            const noteLines = wrapText(displayNote, 26);
+            const boxW = 200, hPad = 10, vPad = 8, lineH = 15, headerH = 15;
+            const boxH = vPad + headerH + noteLines.length * lineH + vPad;
+            let bx = tooltip.cx + 12;
+            let by = tooltip.cy - boxH - 10;
+            if (bx + boxW > W - 4) bx = tooltip.cx - boxW - 12;
+            if (by < padT - 6) by = tooltip.cy + 12;
+            return html`<g style="pointer-events:none">
+              <rect x=${bx} y=${by} width=${boxW} height=${boxH} fill="white" stroke=${AXIS} stroke-width="1" />
+              <text font-family=${SANS}>
+                <tspan x=${bx + hPad} y=${by + vPad + 11} font-size="10" fill="#666">${tooltip.date}</tspan>
+                ${noteLines.map((l, i) => html`<tspan key=${i} x=${bx + hPad} dy=${lineH} font-size="12" fill=${isNoNote ? '#999' : '#333'} font-style=${isNoNote ? 'italic' : 'normal'}>${l}</tspan>`)}
+              </text>
+            </g>`;
+          })()}
         </svg>
         ${view && html`<button class="btn ghost"
           style="position:absolute; top:6px; left:6px; width:auto; padding:4px 10px; font-size:12px; background:rgba(255,255,255,.85); border:1px solid var(--border)"
@@ -1108,7 +1164,7 @@
         return selMetrics.map((mid, i) => ({
           name: metricName(mid),
           color: PALETTE[i % PALETTE.length],
-          points: logs.filter(l => l.values[mid] != null).map(l => ({ x: l.date, y: l.values[mid] })),
+          points: logs.filter(l => l.values[mid] != null).map(l => ({ x: l.date, y: l.values[mid], note: l.note || '' })),
         })).filter(s => s.points.length > 0);
       }, [exId, selMetrics, d.logEntries]);
 
