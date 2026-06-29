@@ -24,18 +24,36 @@ self.addEventListener('activate', (e) => {
   );
 });
 
-// Stale-while-revalidate: serve cache instantly, refresh in the background.
-// Caches successful same-origin and CDN (esm.sh) responses so the app works offline.
+const SHELL = new Set(CORE.slice(0, 2)); // ./ and ./index.html — always network-first
+
 self.addEventListener('fetch', (e) => {
   const req = e.request;
   if (req.method !== 'GET') return;
+  const url = new URL(req.url);
+  const isShell = SHELL.has(url.pathname.replace(self.registration.scope.replace(location.origin, ''), './').replace(/^\/?/, './'));
+
+  if (isShell) {
+    // Network-first for the app shell: always get latest when online, fall back to cache offline.
+    e.respondWith(
+      fetch(req)
+        .then((res) => {
+          if (res && res.status === 200) {
+            caches.open(CACHE).then((c) => c.put(req, res.clone()));
+          }
+          return res;
+        })
+        .catch(() => caches.match(req))
+    );
+    return;
+  }
+
+  // Stale-while-revalidate for CDN assets and icons.
   e.respondWith(
     caches.match(req).then((cached) => {
       const network = fetch(req)
         .then((res) => {
           if (res && res.status === 200 && (res.type === 'basic' || res.type === 'cors')) {
-            const copy = res.clone();
-            caches.open(CACHE).then((c) => c.put(req, copy));
+            caches.open(CACHE).then((c) => c.put(req, res.clone()));
           }
           return res;
         })
